@@ -1,0 +1,184 @@
+---
+title: "Mercado_CID_2024"
+author: "Reinaldo Mercado"
+date: "2024-July"
+output: html_document
+---
+
+These are code used to conduct the statistic and create the tables and figures 
+for the following manuscript:
+
+Mercado-Hernandez et al.
+Obesity is associated with increased pediatric dengue virus infection and disease: 
+A 9-year cohort study in Managua, Nicaragua. 
+Clinical Infectious Diseases. 2024. ciae3602024. 
+
+NOTE: 
+This is an incomplete version. 
+I am currently cleaning and annotating the code for easier reading. 
+I will update this script as soon as possible. 
+
+ 
+START
+
+Libraries
+```{r Text}
+library(dplyr)
+library(AGD) #step 1 - calculate BMI z-scores
+library(epiR) #Step 2 - 
+library(gtsummary) #Step 2, 3 and 5 - Tabulating results
+library(geepack) #Step 4 - logistic regression with GEE
+library(forester) #Step 6 - Plotting results
+```
+
+
+1- Preparing data for analysis
+```{r Data}
+####1 - Data####
+#1.1 - Load data
+load("Data.Rdata")
+#_______________________________________________________________________________
+#1.2 - BMIz Z-score (BMIz) category 
+A_Data$BMI_Z_score <- 
+  AGD::y2z(
+    y=A_Data$BMI, 
+    x=A_Data$Age, 
+    sex=A_Data$Sex, 
+    ref = who.bmi, 
+    tail.adjust=T)
+#_______________________________________________________________________________
+#1.3 - BMIz categories 
+
+#_#1.3.1 Calculate BMIz
+A_Data <- A_Data %>% 
+  mutate(BMIz_Category = 
+#__#BMIz for children 2 to 5 years old):
+#__#__#__#Underweight: < -2SD.
+#__#__#__#Normal weight: >=-2 to <=+2SD.
+#__#__#__#Overweight: >+2SD to <=+3SD. 
+#__#__#__#Obese: >+3SD.
+         ifelse(HW_Age_Year < 5 & BMI_Z_score < -2, "Underweight", 
+         ifelse(HW_Age_Year < 5 & BMI_Z_score >= -2 & BMI_Z_score <= 2, "Normalweight", 
+         ifelse(HW_Age_Year < 5 & BMI_Z_score > 2 & BMI_Z_score <=3, "Overweight",
+         ifelse(HW_Age_Year < 5 & BMI_Z_score > 3, "Obese",
+#__#BMIz for children 5 to 18 years old):
+#__#__#__#Underweight: < -2SD.
+#__#__#__#Normal weight: >=-2 to <=+1SD
+#__#__#__#Overweight: >+1SD to <=+2SD (equivalent to BMI 25 kg/m2 at 19 years)
+#__#__#__#Obese: >+2SD (equivalent to BMI 30 kg/m2 at 19 years)
+         ifelse(HW_Age_Year >= 5 & BMI_Z_score < -2, "Underweight", 
+         ifelse(HW_Age_Year >= 5 & BMI_Z_score >= -2 & BMI_Z_score <= 1, "Normalweight", 
+         ifelse(HW_Age_Year >= 5 & BMI_Z_score > 1 & BMI_Z_score <=2, "Overweight",
+         ifelse(HW_Age_Year >= 5 & BMI_Z_score > 2, "Obese", NA)))))))))
+
+#_#1.3.2 Make BMIz_Category = "NA" into "No_data"
+A_Data$BMIz_Category <- 
+  replace(A_Data$BMIz_Category,is.na(A_Data$BMIz_Category),"No_data")
+
+#_______________________________________________________________________________
+#1.4 - Only include participants with recorded BMIz Z-score category data
+A_Data <- A_Data %>% 
+  filter(BMIz_Category == "Normalweight" | 
+           BMIz_Category == "Underweight" |
+           BMIz_Category == "Overweight" |
+           BMIz_Category == "Obese") 
+#_______________________________________________________________________________
+#1.5 - Variable order
+#_#1.5.1 BMIz_Category
+A_Data$BMIz_Category <- factor(
+      A_Data$BMIz_Category, 
+      levels = c("Normalweight", "Underweight", "Overweight", "Obese"))
+#_#1.5.1 DENV_iELISA_Titer
+A_Data$DENV_iELISA_Titer <- factor(
+      A_Data$DENV_iELISA_Titer, 
+      levels = c(
+      "[0-10)", "[10-20)", "[20-80)", "[80-320)", "[320-1280]", ">1280"))
+#_#1.5.1 Sex
+A_Data$Sex <- factor(
+      A_Data$Sex, 
+      levels = c(
+      "Female", "Male"))
+#_______________________________________________________________________________
+#1.6 - Add number of observations per Code_ID
+#List of Code_ID with observation counts
+B_obs <- A_Data %>% count(Code_ID) %>% rename(No_obs = "n")
+#Merge to Cohort data
+A_Data <- left_join(
+  A_Data, B_obs, by = "Code_ID")
+#_______________________________________________________________________________
+####2 - Table 1####
+#Coming soon
+#I am working on cleaning and annotating these code for easier understanding
+#They will be uploaded in the next version of this file. 
+#_______________________________________________________________________________
+####3 - Table 2####
+#Coming soon
+#I am working on cleaning and annotating these code for easier understanding
+#They will be uploaded in the next version of this file. 
+#_______________________________________________________________________________
+####4 - Logistic regression GEE####
+#_#4.1 Bivariable models
+C_GEE_1_Bi <- geeglm(Outcome ~ BMIz_Category, 
+            data = A_Data_1,
+            id = Code_ID, family = binomial, corstr = "exchangeable")
+#_#4.2 Multivariable_B
+C_GEE_1_Mul <- geeglm(Outcome ~ BMIz_Category + 
+                        Age + Sex + DENV_iELISA_Titer, 
+            data = (A_Data_1 %>% 
+                      filter(DENV_iELISA_Titer != "Missing")), 
+            id = Code_ID, family = binomial, corstr = "exchangeable")
+#Note: The same code was followed for each of the tested outcomes
+#Note: For 1) Dengue given DENV and 2) dengue clinical manifestations
+#analysis, the following filter was used: 
+#A_Data_1 %>% filter(DENV_infection == "TRUE")
+#_______________________________________________________________________________
+####5 - Models results into table####
+#_#5.1 Functions for extracting models results
+#_#5.1.1 Bivariable
+Model_table_Bi <- function(data, exponentiate, digits_est, digits_pvalue) {
+  tbl_regression(data,
+                 exponentiate = exponentiate,
+                 label = list(
+                 BMIz_Category ~ "BMIz Category"),
+                 estimate_fun = purrr::partial(style_ratio, digits = digits_est), 
+                 pvalue_fun = purrr::partial(style_sigfig, digits = digits_pvalue)) %>%
+    add_nevent(location = "level") %>%
+    add_n(location = "level") %>%
+    bold_p(t = 0.05, q = FALSE) %>%
+    bold_labels() %>%
+    italicize_levels()
+}
+#_______________________________________________________________________________
+#_#5.1.2 Multivariate
+Model_table_Multi <- function(data, exponentiate, digits_est, digits_pvalue) {
+  tbl_regression(data,
+                 exponentiate = exponentiate,
+                 label = list(
+                BMIz_Category ~ "BMIz Category",
+                Age ~ "Age", 
+                Sex ~ "Sex", 
+                DENV_iELISA_Titer ~ "DENV antibody titer"),
+                 estimate_fun = purrr::partial(style_ratio, digits = digits_est), 
+                 pvalue_fun = purrr::partial(style_sigfig, digits = digits_pvalue)) %>%
+    add_nevent(location = "level") %>%
+    add_n(location = "level") %>%
+    bold_p(t = 0.05, q = FALSE) %>%
+    bold_labels() %>%
+    italicize_levels()
+}
+#_______________________________________________________________________________
+#_#5.2 Making the tables
+#_#5.2.1 Bivariable
+D_Table <- Model_table_Bi(C_GEE_1_Bi, TRUE, 2, 4)
+#_#5.2.2 Multivariate
+D_GEE_1B_df <- Model_table_Multi(C_GEE_1_Mul, TRUE, 2, 4)
+#Note: The same code was followed for each of the tested outcomes
+#_______________________________________________________________________________
+####6 - Models results into forest plots####
+#Coming soon
+#I am working on cleaning and annotating these code for easier understanding
+#They will be uploaded in the next version of this file. 
+#_______________________________________________________________________________
+####END####
+```
+END
